@@ -1,0 +1,468 @@
+{
+  "fields": [
+    {
+      "id": "field_1779017003227",
+      "label": "bob",
+      "type": "base"
+    },
+    {
+      "id": "field_1779017004583",
+      "label": "bee",
+      "type": "base"
+    },
+    {
+      "id": "field_1779017017223",
+      "label": "blob",
+      "type": "derived"
+    },
+    {
+      "id": "field_1779017031384",
+      "label": "blee",
+      "type": "derived"
+    },
+    {
+      "id": "op_1779017031384",
+      "label": "+",
+      "type": "operation"
+    },
+    {
+      "id": "field_1779017066983",
+      "label": "conch",
+      "type": "base"
+    },
+    {
+      "id": "field_1779017071582",
+      "label": "baby",
+      "type": "base"
+    },
+    {
+      "id": "field_1779017086520",
+      "label": "beebob",
+      "type": "derived"
+    },
+    {
+      "id": "op_1779017086520",
+      "label": "+",
+      "type": "operation"
+    },
+    {
+      "id": "field_1779017099908",
+      "label": "bonch",
+      "type": "derived"
+    },
+    {
+      "id": "op_1779017099908",
+      "label": "+",
+      "type": "operation"
+    },
+    {
+      "id": "field_1779017126729",
+      "label": "bonchie",
+      "type": "derived"
+    },
+    {
+      "id": "op_1779017126729",
+      "label": "+",
+      "type": "operation"
+    },
+    {
+      "id": "field_1779017139471",
+      "label": "squish",
+      "type": "base"
+    },
+    {
+      "id": "field_1779017148359",
+      "label": "squanch",
+      "type": "derived"
+    },
+    {
+      "id": "op_1779017148359",
+      "label": "+",
+      "type": "operation"
+    },
+    {
+      "id": "field_1779017159124",
+      "label": "squanchie",
+      "type": "derived"
+    },
+    {
+      "id": "op_1779017159124",
+      "label": "+",
+      "type": "operation"
+    },
+    {
+      "id": "field_1779017190085",
+      "label": "bobsk",
+      "type": "derived"
+    },
+    {
+      "id": "field_1779017215321",
+      "label": "bobsky",
+      "type": "derived"
+    },
+    {
+      "id": "op_1779017215321",
+      "label": "+",
+      "type": "operation"
+    },
+    {
+      "id": "field_1779017236714",
+      "label": "bob le squanch",
+      "type": "derived"
+    },
+    {
+      "id": "op_1779017236714",
+      "label": "+",
+      "type": "operation"
+    },
+    {
+      "id": "field_1779017250941",
+      "label": "blorb",
+      "type": "derived"
+    },
+    {
+      "id": "field_1779017264429",
+      "label": "blorby",
+      "type": "derived"
+    },
+    {
+      "id": "op_1779017264429",
+      "label": "+",
+      "type": "operation"
+    },
+    {
+      "id": "field_1779017355639",
+      "label": "bobskito",
+      "type": "derived"
+    },
+    {
+      "id": "field_1779017391160",
+      "label": "borb",
+      "type": "derived"
+    },
+    {
+      "id": "field_1779017406762",
+      "label": "borby",
+      "type": "derived"
+    },
+    {
+      "id": "op_1779017406762",
+      "label": "+",
+      "type": "operation"
+    },
+    {
+      "id": "field_1779017432089",
+      "label": "bebi",
+      "type": "derived"
+    },
+    {
+      "id": "op_1779017432089",
+      "label": "+",
+      "type": "operation"
+    },
+    {
+      "id": "field_1779017512243",
+      "label": "bleebob",
+      "type": "derived"
+    },
+    {
+      "id": "op_1779017512243",
+      "label": "+",
+      "type": "operation"
+    },
+    {
+      "id": "field_1779017550482",
+      "label": "squancho",
+      "type": "derived"
+    },
+    {
+      "id": "field_1779017655174",
+      "label": "sqishy",
+      "type": "derived"
+    },
+    {
+      "id": "op_1779017655174",
+      "label": "+",
+      "type": "operation"
+    },
+    {
+      "id": "field_1779017676643",
+      "label": "bobo el squancho",
+      "type": "derived"
+    },
+    {
+      "id": "op_1779017676643",
+      "label": "+",
+      "type": "operation"
+    },
+    {
+      "id": "field_1779017711764",
+      "label": "squash",
+      "type": "derived"
+    },
+    {
+      "id": "field_1779017721820",
+      "label": "squashy",
+      "type": "derived"
+    },
+    {
+      "id": "op_1779017721820",
+      "label": "+",
+      "type": "operation"
+    },
+    {
+      "id": "field_1779017761938",
+      "label": "squee",
+      "type": "derived"
+    },
+    {
+      "id": "op_1779017761938",
+      "label": "+",
+      "type": "operation"
+    },
+    {
+      "id": "field_1779017807410",
+      "label": "squeebob",
+      "type": "derived"
+    },
+    {
+      "id": "op_1779017807410",
+      "label": "+",
+      "type": "operation"
+    }
+  ],
+  "relationships": [
+    {
+      "source": "field_1779017003227",
+      "target": "field_1779017017223"
+    },
+    {
+      "source": "field_1779017004583",
+      "target": "op_1779017031384"
+    },
+    {
+      "source": "field_1779017017223",
+      "target": "op_1779017031384"
+    },
+    {
+      "source": "op_1779017031384",
+      "target": "field_1779017031384"
+    },
+    {
+      "source": "field_1779017003227",
+      "target": "op_1779017086520"
+    },
+    {
+      "source": "field_1779017004583",
+      "target": "op_1779017086520"
+    },
+    {
+      "source": "op_1779017086520",
+      "target": "field_1779017086520"
+    },
+    {
+      "source": "field_1779017003227",
+      "target": "op_1779017099908"
+    },
+    {
+      "source": "field_1779017066983",
+      "target": "op_1779017099908"
+    },
+    {
+      "source": "op_1779017099908",
+      "target": "field_1779017099908"
+    },
+    {
+      "source": "field_1779017099908",
+      "target": "op_1779017126729"
+    },
+    {
+      "source": "field_1779017004583",
+      "target": "op_1779017126729"
+    },
+    {
+      "source": "op_1779017126729",
+      "target": "field_1779017126729"
+    },
+    {
+      "source": "field_1779017139471",
+      "target": "op_1779017148359"
+    },
+    {
+      "source": "field_1779017066983",
+      "target": "op_1779017148359"
+    },
+    {
+      "source": "op_1779017148359",
+      "target": "field_1779017148359"
+    },
+    {
+      "source": "field_1779017004583",
+      "target": "op_1779017159124"
+    },
+    {
+      "source": "field_1779017148359",
+      "target": "op_1779017159124"
+    },
+    {
+      "source": "op_1779017159124",
+      "target": "field_1779017159124"
+    },
+    {
+      "source": "field_1779017003227",
+      "target": "field_1779017190085"
+    },
+    {
+      "source": "field_1779017190085",
+      "target": "op_1779017215321"
+    },
+    {
+      "source": "field_1779017071582",
+      "target": "op_1779017215321"
+    },
+    {
+      "source": "op_1779017215321",
+      "target": "field_1779017215321"
+    },
+    {
+      "source": "field_1779017003227",
+      "target": "op_1779017236714"
+    },
+    {
+      "source": "field_1779017148359",
+      "target": "op_1779017236714"
+    },
+    {
+      "source": "op_1779017236714",
+      "target": "field_1779017236714"
+    },
+    {
+      "source": "field_1779017017223",
+      "target": "field_1779017250941"
+    },
+    {
+      "source": "field_1779017250941",
+      "target": "op_1779017264429"
+    },
+    {
+      "source": "field_1779017071582",
+      "target": "op_1779017264429"
+    },
+    {
+      "source": "op_1779017264429",
+      "target": "field_1779017264429"
+    },
+    {
+      "source": "field_1779017215321",
+      "target": "field_1779017355639"
+    },
+    {
+      "source": "field_1779017003227",
+      "target": "field_1779017391160"
+    },
+    {
+      "source": "field_1779017391160",
+      "target": "op_1779017406762"
+    },
+    {
+      "source": "field_1779017071582",
+      "target": "op_1779017406762"
+    },
+    {
+      "source": "op_1779017406762",
+      "target": "field_1779017406762"
+    },
+    {
+      "source": "field_1779017004583",
+      "target": "op_1779017432089"
+    },
+    {
+      "source": "field_1779017071582",
+      "target": "op_1779017432089"
+    },
+    {
+      "source": "op_1779017432089",
+      "target": "field_1779017432089"
+    },
+    {
+      "source": "field_1779017031384",
+      "target": "op_1779017512243"
+    },
+    {
+      "source": "field_1779017086520",
+      "target": "op_1779017512243"
+    },
+    {
+      "source": "op_1779017512243",
+      "target": "field_1779017512243"
+    },
+    {
+      "source": "field_1779017148359",
+      "target": "field_1779017550482"
+    },
+    {
+      "source": "field_1779017139471",
+      "target": "op_1779017655174"
+    },
+    {
+      "source": "field_1779017071582",
+      "target": "op_1779017655174"
+    },
+    {
+      "source": "op_1779017655174",
+      "target": "field_1779017655174"
+    },
+    {
+      "source": "field_1779017003227",
+      "target": "op_1779017676643"
+    },
+    {
+      "source": "field_1779017550482",
+      "target": "op_1779017676643"
+    },
+    {
+      "source": "op_1779017676643",
+      "target": "field_1779017676643"
+    },
+    {
+      "source": "field_1779017139471",
+      "target": "field_1779017711764"
+    },
+    {
+      "source": "field_1779017711764",
+      "target": "op_1779017721820"
+    },
+    {
+      "source": "field_1779017071582",
+      "target": "op_1779017721820"
+    },
+    {
+      "source": "op_1779017721820",
+      "target": "field_1779017721820"
+    },
+    {
+      "source": "field_1779017004583",
+      "target": "op_1779017761938"
+    },
+    {
+      "source": "field_1779017139471",
+      "target": "op_1779017761938"
+    },
+    {
+      "source": "op_1779017761938",
+      "target": "field_1779017761938"
+    },
+    {
+      "source": "field_1779017761938",
+      "target": "op_1779017807410"
+    },
+    {
+      "source": "field_1779017003227",
+      "target": "op_1779017807410"
+    },
+    {
+      "source": "op_1779017807410",
+      "target": "field_1779017807410"
+    }
+  ]
+}
