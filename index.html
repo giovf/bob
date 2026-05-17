@@ -93,6 +93,11 @@
             // Share State
             const [shareCopied, setShareCopied] = useState(false);
 
+            // Canvas Settings State
+            const [physicsEnabled, setPhysicsEnabled] = useState(false);
+            const [bondStrength, setBondStrength] = useState(50);
+            const [nodesPinned, setNodesPinned] = useState(false);
+
             const networkRef = useRef(null);
             const containerRef = useRef(null);
             const fileInputRef = useRef(null);
@@ -105,8 +110,12 @@
             const handleAutoArrange = useCallback(() => {
                 if (!networkRef.current) return;
                 
+                // Turn off physics so nodes don't snap out of the tree structure
+                setPhysicsEnabled(false);
+
                 // Temporarily turn on hierarchical layout to calculate a clean tree
                 networkRef.current.setOptions({
+                    physics: { enabled: false },
                     layout: { hierarchical: { direction: 'UD', sortMethod: 'directed', nodeSpacing: 180, levelSeparation: 120 } }
                 });
 
@@ -143,8 +152,8 @@
                             width: 2, hoverWidth: 1, selectionWidth: 1,
                             shadow: { enabled: true, color: 'rgba(0,0,0,0.08)', size: 4, x: 0, y: 2 }
                         },
-                        physics: false, // Disable physics so nodes stay EXACTLY where you drop them
-                        interaction: { hover: true, tooltipDelay: 200, zoomView: true }
+                        physics: { enabled: false }, // Controlled dynamically by React state
+                        interaction: { hover: true, tooltipDelay: 200, zoomView: true, dragNodes: true }
                     };
 
                     networkRef.current = new vis.Network(containerRef.current, data, options);
@@ -163,10 +172,59 @@
                     });
 
                     // If loaded graph has no positional data, run auto-arrange once
-                    const needsLayout = fields.length > 0 && fields.every(f => f.x === undefined);
-                    if (needsLayout) handleAutoArrange();
-                }
-            }, [fields.length, handleAutoArrange]); 
+            const needsLayout = fields.length > 0 && fields.every(f => f.x === undefined);
+            if (needsLayout) handleAutoArrange();
+        }
+    }, [fields.length, handleAutoArrange]); 
+
+    // Sync positions from physics engine back to React state to prevent snapping
+    const syncPositionsToState = useCallback(() => {
+        if (!networkRef.current) return;
+        const positions = networkRef.current.getPositions();
+        setFields(prev => prev.map(f => {
+            if (positions[f.id]) {
+                return { ...f, x: positions[f.id].x, y: positions[f.id].y };
+            }
+            return f;
+        }));
+    }, []);
+
+    const handleToggleAnchor = (e) => {
+        const isChecked = e.target.checked;
+        if (isChecked) syncPositionsToState(); // Save exact physics coordinates before freezing
+        setNodesPinned(isChecked);
+    };
+
+    const handleTogglePhysics = (e) => {
+        const isChecked = e.target.checked;
+        if (!isChecked) syncPositionsToState(); // Save exact resting coordinates before turning off springs
+        setPhysicsEnabled(isChecked);
+    };
+
+    // Sync Physics & Interaction Options
+    useEffect(() => {
+        if (!networkRef.current) return;
+                
+                // Map 0-100 slider to vis-network physics ranges
+                const springConstant = 0.01 + (bondStrength / 100) * 0.09; // 0.01 to 0.10
+                const springLength = 300 - (bondStrength / 100) * 250;     // 300 to 50
+
+                networkRef.current.setOptions({
+                    physics: {
+                        enabled: physicsEnabled,
+                        solver: 'barnesHut',
+                        barnesHut: {
+                            springConstant: springConstant,
+                            springLength: springLength,
+                            centralGravity: 0.3,
+                            gravitationalConstant: -2000
+                        }
+                    },
+                    interaction: {
+                        dragNodes: true // Always allow user to drag nodes manually
+                    }
+                });
+            }, [physicsEnabled, bondStrength]);
 
             // Sync React State to Vis.js Datasets efficiently
             useEffect(() => {
@@ -178,13 +236,16 @@
                 if (nodesToRemove.length > 0) nodesDs.current.remove(nodesToRemove);
 
                 // Update or Add nodes with X/Y coordinates
-                const nodesToUpdate = fields.map(f => {
-                    let nodeProps = { id: f.id, label: f.label };
-                    
-                    if (f.x !== undefined) nodeProps.x = f.x;
-                    if (f.y !== undefined) nodeProps.y = f.y;
+        const nodesToUpdate = fields.map(f => {
+            let nodeProps = { id: f.id, label: f.label };
+            
+            if (f.x !== undefined) nodeProps.x = f.x;
+            if (f.y !== undefined) nodeProps.y = f.y;
 
-                    if (f.type === 'operation') {
+            // Anchor position against the physics engine, but allow manual dragging
+            nodeProps.physics = !nodesPinned;
+
+            if (f.type === 'operation') {
                         nodeProps.shape = 'circle';
                         nodeProps.margin = 8;
                         nodeProps.color = {
@@ -225,7 +286,7 @@
                 
                 edgesDs.current.update(mappedEdges);
 
-            }, [fields, relationships]);
+            }, [fields, relationships, nodesPinned]);
 
             // --- Cycle Detection ---
             const detectCycle = (edges, newSource, newTarget) => {
@@ -766,6 +827,39 @@
                             >
                                 <i className="fas fa-expand-arrows-alt"></i>
                             </button>
+                        </div>
+
+                        {/* Graph Settings Overlay */}
+                        <div className="absolute top-4 left-4 z-10 bg-white/95 backdrop-blur border border-gray-200 p-4 rounded-xl shadow-sm w-64 space-y-4">
+                    <h3 className="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-2">
+                        <i className="fas fa-sliders-h text-indigo-500"></i> Canvas Settings
+                    </h3>
+                    
+                    <label className="flex items-center justify-between text-sm text-gray-700 cursor-pointer group" title="Anchor nodes against physics, but allow manual dragging">
+                        <span className="group-hover:text-indigo-600 transition-colors"><i className="fas fa-thumbtack w-4 text-center mr-1 text-gray-400"></i> Anchor Nodes</span>
+                        <input type="checkbox" checked={nodesPinned} onChange={handleToggleAnchor} className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer"/>
+                    </label>
+
+                    <label className="flex items-center justify-between text-sm text-gray-700 cursor-pointer group">
+                        <span className="group-hover:text-indigo-600 transition-colors"><i className="fas fa-magnet w-4 text-center mr-1 text-gray-400"></i> Elastic Physics</span>
+                        <input type="checkbox" checked={physicsEnabled} onChange={handleTogglePhysics} className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer"/>
+                    </label>
+
+                    {physicsEnabled && (
+                                <div className="space-y-2 pt-2 border-t border-gray-100">
+                                    <div className="flex justify-between text-xs font-medium text-gray-500">
+                                        <span>Loose</span>
+                                        <span className="text-indigo-600">Bond Strength</span>
+                                        <span>Tight</span>
+                                    </div>
+                                    <input 
+                                        type="range" min="0" max="100" 
+                                        value={bondStrength} 
+                                        onChange={e => setBondStrength(Number(e.target.value))} 
+                                        className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600" 
+                                    />
+                                </div>
+                            )}
                         </div>
 
                         {/* Graph Canvas Container */}
