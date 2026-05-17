@@ -87,12 +87,6 @@
 
             const [error, setError] = useState(null);
 
-            // AI State
-            const [isGenerating, setIsGenerating] = useState(false);
-            const [isExplaining, setIsExplaining] = useState(false);
-            const [explanation, setExplanation] = useState('');
-            const [prompt, setPrompt] = useState('');
-            
             // Clear Confirmation State
             const [confirmClear, setConfirmClear] = useState(false);
             
@@ -102,77 +96,134 @@
             const networkRef = useRef(null);
             const containerRef = useRef(null);
             const fileInputRef = useRef(null);
+            
+            // Stable references to datasets so updating data doesn't reset the canvas
+            const nodesDs = useRef(new vis.DataSet());
+            const edgesDs = useRef(new vis.DataSet());
 
             // --- Graph Rendering Logic ---
+            const handleAutoArrange = useCallback(() => {
+                if (!networkRef.current) return;
+                
+                // Temporarily turn on hierarchical layout to calculate a clean tree
+                networkRef.current.setOptions({
+                    layout: { hierarchical: { direction: 'UD', sortMethod: 'directed', nodeSpacing: 180, levelSeparation: 120 } }
+                });
+
+                // Wait for vis-network to calculate positions, then freeze them
+                setTimeout(() => {
+                    if (!networkRef.current) return;
+                    const positions = networkRef.current.getPositions();
+                    
+                    // Turn hierarchical back off so the user can freely drag nodes again
+                    networkRef.current.setOptions({ layout: { hierarchical: false } });
+                    
+                    // Save the new perfect tree positions to React State
+                    setFields(prev => prev.map(f => {
+                        if (positions[f.id]) {
+                            return { ...f, x: positions[f.id].x, y: positions[f.id].y };
+                        }
+                        return f;
+                    }));
+                    
+                    networkRef.current.fit({ animation: { duration: 500, easingFunction: 'easeInOutQuad' } });
+                }, 100);
+            }, []);
+
             useEffect(() => {
                 if (!containerRef.current) return;
 
-                const nodesDataset = new vis.DataSet(
-                    fields.map(f => {
-                        let nodeProps = { id: f.id, label: f.label };
-
-                        if (f.type === 'operation') {
-                            nodeProps.shape = 'circle';
-                            nodeProps.margin = 8;
-                            nodeProps.color = {
-                                background: '#f1f5f9', border: '#cbd5e1',     
-                                highlight: { background: '#e2e8f0', border: '#94a3b8' }
-                            };
-                            nodeProps.font = { size: 16, color: '#475569', face: '"JetBrains Mono", monospace', bold: true };
-                            nodeProps.borderWidth = 1;
-                            nodeProps.shadow = { enabled: true, color: 'rgba(0,0,0,0.05)', size: 8, x: 0, y: 3 };
-                        } else {
-                            nodeProps.shape = 'box';
-                            nodeProps.margin = { top: 12, bottom: 12, left: 16, right: 16 };
-                            nodeProps.color = {
-                                background: '#ffffff', border: '#e2e8f0',     
-                                highlight: { background: '#f8fafc', border: '#94a3b8' },
-                                hover: { background: '#f8fafc', border: '#cbd5e1' }
-                            };
-                            nodeProps.font = { size: 14, color: '#1e293b', face: '"Inter", sans-serif' };
-                            nodeProps.borderWidth = 1;
-                            nodeProps.shadow = { enabled: true, color: 'rgba(0,0,0,0.04)', size: 12, x: 0, y: 4 };
-                        }
-                        return nodeProps;
-                    })
-                );
-
-                const edgesDataset = new vis.DataSet(
-                    relationships.map((r, i) => ({
-                        id: `edge_${r.source}_${r.target}_${i}`,
-                        from: r.source,
-                        to: r.target,
-                        arrows: { to: { enabled: true, scaleFactor: 0.8, type: 'arrow' } }
-                    }))
-                );
-
-                const data = { nodes: nodesDataset, edges: edgesDataset };
-
-                const options = {
-                    layout: {
-                        hierarchical: {
-                            direction: 'UD', sortMethod: 'directed', nodeSpacing: 180, levelSeparation: 120
-                        }
-                    },
-                    edges: {
-                        smooth: { type: 'cubicBezier', forceDirection: 'vertical', roundness: 0.4 },
-                        color: { color: 'rgba(148, 163, 184, 0.5)', highlight: 'rgba(99, 102, 241, 0.8)', hover: 'rgba(148, 163, 184, 0.7)' },
-                        width: 2, hoverWidth: 1, selectionWidth: 1,
-                        shadow: { enabled: true, color: 'rgba(0,0,0,0.08)', size: 4, x: 0, y: 2 }
-                    },
-                    physics: false,
-                    interaction: { hover: true, tooltipDelay: 200, zoomView: true }
-                };
-
                 if (!networkRef.current) {
-                    networkRef.current = new vis.Network(containerRef.current, data, options);
-                } else {
-                    networkRef.current.setData(data);
-                }
+                    const data = { nodes: nodesDs.current, edges: edgesDs.current };
+                    const options = {
+                        layout: { hierarchical: false }, // Manual freeform positioning by default
+                        edges: {
+                            smooth: { type: 'cubicBezier', forceDirection: 'vertical', roundness: 0.4 },
+                            color: { color: 'rgba(148, 163, 184, 0.5)', highlight: 'rgba(99, 102, 241, 0.8)', hover: 'rgba(148, 163, 184, 0.7)' },
+                            width: 2, hoverWidth: 1, selectionWidth: 1,
+                            shadow: { enabled: true, color: 'rgba(0,0,0,0.08)', size: 4, x: 0, y: 2 }
+                        },
+                        physics: false, // Disable physics so nodes stay EXACTLY where you drop them
+                        interaction: { hover: true, tooltipDelay: 200, zoomView: true }
+                    };
 
-                if (fields.length <= 5 && fields.length > 0) {
-                    networkRef.current.fit({ animation: { duration: 500, easingFunction: 'easeInOutQuad' } });
+                    networkRef.current = new vis.Network(containerRef.current, data, options);
+
+                    // Persist positions when a user drags a node
+                    networkRef.current.on("dragEnd", (params) => {
+                        if (params.nodes.length > 0) {
+                            const positions = networkRef.current.getPositions(params.nodes);
+                            setFields(prevFields => prevFields.map(f => {
+                                if (positions[f.id]) {
+                                    return { ...f, x: positions[f.id].x, y: positions[f.id].y };
+                                }
+                                return f;
+                            }));
+                        }
+                    });
+
+                    // If loaded graph has no positional data, run auto-arrange once
+                    const needsLayout = fields.length > 0 && fields.every(f => f.x === undefined);
+                    if (needsLayout) handleAutoArrange();
                 }
+            }, [fields.length, handleAutoArrange]); 
+
+            // Sync React State to Vis.js Datasets efficiently
+            useEffect(() => {
+                const currentNodes = nodesDs.current.get();
+                const newFieldIds = fields.map(f => f.id);
+                
+                // Remove deleted nodes
+                const nodesToRemove = currentNodes.filter(n => !newFieldIds.includes(n.id)).map(n => n.id);
+                if (nodesToRemove.length > 0) nodesDs.current.remove(nodesToRemove);
+
+                // Update or Add nodes with X/Y coordinates
+                const nodesToUpdate = fields.map(f => {
+                    let nodeProps = { id: f.id, label: f.label };
+                    
+                    if (f.x !== undefined) nodeProps.x = f.x;
+                    if (f.y !== undefined) nodeProps.y = f.y;
+
+                    if (f.type === 'operation') {
+                        nodeProps.shape = 'circle';
+                        nodeProps.margin = 8;
+                        nodeProps.color = {
+                            background: '#f1f5f9', border: '#cbd5e1',     
+                            highlight: { background: '#e2e8f0', border: '#94a3b8' }
+                        };
+                        nodeProps.font = { size: 16, color: '#475569', face: '"JetBrains Mono", monospace', bold: true };
+                        nodeProps.borderWidth = 1;
+                        nodeProps.shadow = { enabled: true, color: 'rgba(0,0,0,0.05)', size: 8, x: 0, y: 3 };
+                    } else {
+                        nodeProps.shape = 'box';
+                        nodeProps.margin = { top: 12, bottom: 12, left: 16, right: 16 };
+                        nodeProps.color = {
+                            background: '#ffffff', border: '#e2e8f0',     
+                            highlight: { background: '#f8fafc', border: '#94a3b8' },
+                            hover: { background: '#f8fafc', border: '#cbd5e1' }
+                        };
+                        nodeProps.font = { size: 14, color: '#1e293b', face: '"Inter", sans-serif' };
+                        nodeProps.borderWidth = 1;
+                        nodeProps.shadow = { enabled: true, color: 'rgba(0,0,0,0.04)', size: 12, x: 0, y: 4 };
+                    }
+                    return nodeProps;
+                });
+                nodesDs.current.update(nodesToUpdate);
+
+                // Sync Edges
+                const currentEdges = edgesDs.current.get();
+                const mappedEdges = relationships.map((r, i) => ({
+                    id: r.id || `edge_${r.source}_${r.target}_${i}`,
+                    from: r.source,
+                    to: r.target,
+                    arrows: { to: { enabled: true, scaleFactor: 0.8, type: 'arrow' } }
+                }));
+                const newEdgeIds = mappedEdges.map(e => e.id);
+
+                const edgesToRemove = currentEdges.filter(e => !newEdgeIds.includes(e.id)).map(e => e.id);
+                if (edgesToRemove.length > 0) edgesDs.current.remove(edgesToRemove);
+                
+                edgesDs.current.update(mappedEdges);
 
             }, [fields, relationships]);
 
@@ -212,6 +263,16 @@
                 return false;
             };
 
+            // Helpers for dynamic coordinate generation
+            const getSpawnPos = () => {
+                if (!networkRef.current) return { x: 0, y: 0 };
+                const center = networkRef.current.getViewPosition();
+                // Add slight randomness so new nodes don't perfectly stack on each other
+                const jitterX = Math.floor(Math.random() * 60) - 30;
+                const jitterY = Math.floor(Math.random() * 60) - 30;
+                return { x: center.x + jitterX, y: center.y + jitterY };
+            };
+
             // --- Interaction Logic ---
             const addBaseField = (e) => {
                 e.preventDefault();
@@ -225,7 +286,8 @@
                 }
 
                 const newId = `field_${Date.now()}`;
-                setFields([...fields, { id: newId, label: name, type: 'base' }]);
+                const pos = getSpawnPos();
+                setFields([...fields, { id: newId, label: name, type: 'base', x: pos.x, y: pos.y }]);
                 setNewFieldName('');
             };
 
@@ -253,7 +315,8 @@
                 let targetNodeId = targetNode ? targetNode.id : `field_${Date.now()}`;
 
                 if (!targetNode) {
-                    newFields.push({ id: targetNodeId, label: targetName, type: 'derived' });
+                    const pos = getSpawnPos();
+                    newFields.push({ id: targetNodeId, label: targetName, type: 'derived', x: pos.x, y: pos.y });
                 }
 
                 // Check for existing identical relationship
@@ -268,7 +331,7 @@
                     return;
                 }
 
-                newRels.push({ source: directSource, target: targetNodeId });
+                newRels.push({ id: `edge_${Date.now()}`, source: directSource, target: targetNodeId });
                 setFields(newFields);
                 setRelationships(newRels);
                 
@@ -317,23 +380,25 @@
                 let outNodeId = outNode ? outNode.id : `field_${Date.now()}`;
 
                 if (!outNode) {
-                    newFields.push({ id: outNodeId, label: outName, type: 'derived' });
+                    const pos = getSpawnPos();
+                    newFields.push({ id: outNodeId, label: outName, type: 'derived', x: pos.x, y: pos.y });
                 }
 
                 const opId = `op_${Date.now()}`;
-                newFields.push({ id: opId, label: '+', type: 'operation' });
+                const opPos = getSpawnPos();
+                newFields.push({ id: opId, label: '+', type: 'operation', x: opPos.x, y: opPos.y });
 
                 let tempRels = [...newRels];
                 let hasCycle = false;
 
                 for (let inId of selectedInputIds) {
                     if (detectCycle(tempRels, inId, opId)) { hasCycle = true; break; }
-                    tempRels.push({ source: inId, target: opId });
+                    tempRels.push({ id: `edge_${Date.now()}_in_${inId}`, source: inId, target: opId });
                 }
                 
                 if (!hasCycle) {
                     if (detectCycle(tempRels, opId, outNodeId)) { hasCycle = true; }
-                    tempRels.push({ source: opId, target: outNodeId });
+                    tempRels.push({ id: `edge_${Date.now()}_out`, source: opId, target: outNodeId });
                 }
 
                 if (hasCycle) {
@@ -394,18 +459,13 @@
                 const canvas = containerRef.current.querySelector('canvas');
                 if (!canvas) return;
 
-                // Create a temporary canvas to apply a solid background
-                // because vis-network canvas is transparent by default
                 const tempCanvas = document.createElement('canvas');
                 tempCanvas.width = canvas.width;
                 tempCanvas.height = canvas.height;
                 const ctx = tempCanvas.getContext('2d');
                 
-                // Draw background
-                ctx.fillStyle = '#f8fafc'; // slate-50 to match app bg
+                ctx.fillStyle = '#f8fafc'; 
                 ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-                
-                // Draw graph on top
                 ctx.drawImage(canvas, 0, 0);
 
                 const url = tempCanvas.toDataURL('image/png');
@@ -428,14 +488,12 @@
                 const compressed = LZString.compressToEncodedURIComponent(dataStr);
                 const shareUrl = `${window.location.origin}${window.location.pathname}?g=${compressed}`;
                 
-                // Copy to clipboard fallback mechanism
                 try {
                     navigator.clipboard.writeText(shareUrl).then(() => {
                         setShareCopied(true);
                         setTimeout(() => setShareCopied(false), 2000);
                     });
                 } catch (err) {
-                    // Fallback for iFrames or older browsers
                     const textArea = document.createElement("textarea");
                     textArea.value = shareUrl;
                     document.body.appendChild(textArea);
@@ -447,74 +505,10 @@
                 }
             };
 
-            // --- AI Integration ---
-            const callGemini = async (systemPrompt, userPrompt, isJson = false) => {
-                const apiKey = ""; 
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
-                
-                const payload = {
-                    contents: [{ parts: [{ text: userPrompt }] }],
-                    systemInstruction: { parts: [{ text: systemPrompt }] }
-                };
-
-                if (isJson) payload.generationConfig = { responseMimeType: "application/json" };
-
-                try {
-                    const response = await fetch(apiUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-                    
-                    if (!response.ok) throw new Error("API Request failed");
-                    const result = await response.json();
-                    
-                    const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-                    if (!text) throw new Error("No text returned from API");
-                    
-                    return isJson ? JSON.parse(text) : text;
-                } catch (err) {
-                    throw new Error("Failed to process AI request. Please try again.");
-                }
-            };
-
-            const handleAIGenerate = async (e) => {
-                e.preventDefault();
-                if (!prompt.trim()) return;
-                setIsGenerating(true); setError(null); setExplanation('');
-
-                const sysPrompt = `You are a data architect AI. Breakdown the flow into a Directed Acyclic Graph. 
-                Output valid JSON: { "nodes": [ {"id": "unique_str", "label": "str", "type": "base"|"derived"} ], "operations": [ {"id": "unique_str"} ], "edges": [ {"source": "id", "target": "id"} ] }`;
-
-                try {
-                    const data = await callGemini(sysPrompt, prompt, true);
-                    const newFields = [...data.nodes, ...data.operations.map(op => ({ ...op, label: '+', type: 'operation' }))];
-                    setFields(newFields);
-                    setRelationships(data.edges);
-                    setPrompt('');
-                } catch (err) {
-                    setError(err.message);
-                } finally { setIsGenerating(false); }
-            };
-
-            const handleAIExplain = async () => {
-                if (fields.length === 0) return;
-                setIsExplaining(true); setError(null);
-
-                const sysPrompt = `Explain the following logical DAG structure in plain, concise English. Focus on how inputs flow into final outputs. Max 3 paragraphs.`;
-                const graphData = JSON.stringify({ fields, relationships }, null, 2);
-                
-                try {
-                    const exp = await callGemini(sysPrompt, `Explain this logic graph:\n\n${graphData}`, false);
-                    setExplanation(exp);
-                } catch (err) { setError(err.message); } finally { setIsExplaining(false); }
-            };
-
             // Helpers for UI Rendering
             const availableBaseFields = fields.filter(f => f.type !== 'operation');
             const operations = fields.filter(f => f.type === 'operation');
 
-            // Find direct links (edges where neither source nor target is an operation)
             const directLinks = relationships.filter(r => {
                 const sourceField = fields.find(f => f.id === r.source);
                 const targetField = fields.find(f => f.id === r.target);
@@ -527,18 +521,8 @@
                     
                     {/* LEFT PANEL - CONTROLS */}
                     <div className="w-[420px] flex-shrink-0 border-r border-gray-200 bg-white flex flex-col shadow-lg z-10">
-                        <div className="p-6 border-b border-gray-100 bg-white flex justify-between items-center">
-                            <div>
-                                <h1 className="text-xl font-semibold text-gray-900 flex items-center gap-2 tracking-tight">
-                                    <i className="fas fa-project-diagram text-indigo-600"></i> Logic Builder
-                                </h1>
-                                <p className="text-sm text-gray-500 mt-1">Define nodes and combine them.</p>
-                            </div>
-                        </div>
-
                         <div className="flex-1 overflow-y-auto p-6 space-y-8">
                             
-                            {/* Error Alert */}
                             {error && (
                                 <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded shadow-sm text-sm text-red-700 flex justify-between items-start">
                                     <span><i className="fas fa-exclamation-circle mr-1"></i> {error}</span>
@@ -546,30 +530,7 @@
                                 </div>
                             )}
 
-                            {/* Section 1: AI Generator */}
-                            <div className="bg-indigo-50 p-5 rounded-xl border border-indigo-100">
-                                <h2 className="text-xs font-bold text-indigo-800 uppercase tracking-wider mb-3 flex items-center gap-2">
-                                    <i className="fas fa-sparkles"></i> AI Generate
-                                </h2>
-                                <form onSubmit={handleAIGenerate}>
-                                    <textarea 
-                                        value={prompt}
-                                        onChange={(e) => setPrompt(e.target.value)}
-                                        placeholder="E.g., Take email and password, check auth, and output success or error."
-                                        className="w-full text-sm border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-3 mb-2"
-                                        rows="2"
-                                    />
-                                    <button 
-                                        type="submit" 
-                                        disabled={isGenerating || !prompt.trim()}
-                                        className="w-full bg-indigo-600 text-white text-sm font-medium py-2 px-4 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors shadow-sm"
-                                    >
-                                        {isGenerating ? <><i className="fas fa-spinner fa-spin mr-2"></i> Generating...</> : "Generate Graph"}
-                                    </button>
-                                </form>
-                            </div>
-
-                            {/* Section 2: Add Node */}
+                            {/* Section 1: Add Node */}
                             <div>
                                 <h2 className="text-sm font-semibold text-gray-900 mb-3 border-b border-gray-100 pb-2">1. Define Nodes</h2>
                                 <form onSubmit={addBaseField} className="flex gap-2">
@@ -678,13 +639,11 @@
                                 </form>
                             </div>
 
-                            {/* Existing Rules Summary */}
+                            {/* Active Rules Summary */}
                             {(operations.length > 0 || directLinks.length > 0) && (
                                 <div>
                                     <h2 className="text-sm font-semibold text-gray-900 mb-3 border-b border-gray-100 pb-2">Active Rules & Links</h2>
                                     <div className="space-y-2">
-                                        
-                                        {/* Render Direct Links */}
                                         {directLinks.map((link, idx) => {
                                             const sourceLabel = fields.find(f => f.id === link.source)?.label || '?';
                                             const targetLabel = fields.find(f => f.id === link.target)?.label || '?';
@@ -702,7 +661,6 @@
                                             );
                                         })}
 
-                                        {/* Render Operations */}
                                         {operations.map(op => {
                                             const incomingEdges = relationships.filter(r => r.target === op.id);
                                             const outgoingEdges = relationships.filter(r => r.source === op.id);
@@ -778,20 +736,20 @@
                         {/* Top Header/Toolbar inside graph area */}
                         <div className="absolute top-4 right-4 z-10 flex gap-3">
                             <button 
+                                onClick={handleAutoArrange}
+                                disabled={fields.length === 0}
+                                className="bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 text-sm py-2 px-4 rounded-lg shadow-sm disabled:opacity-50 transition-colors flex items-center gap-2"
+                                title="Auto-Arrange Layout"
+                            >
+                                <i className="fas fa-sitemap"></i> Auto-Arrange
+                            </button>
+                            <button 
                                 onClick={handleShareLink}
                                 disabled={fields.length === 0}
                                 className={`bg-white border border-gray-200 text-sm font-medium py-2 px-4 rounded-lg shadow-sm disabled:opacity-50 transition-colors flex items-center gap-2 ${shareCopied ? 'text-green-600 border-green-200 bg-green-50' : 'text-indigo-600 hover:bg-indigo-50'}`}
                                 title="Generate shareable URL"
                             >
                                 {shareCopied ? <><i className="fas fa-check"></i> Copied!</> : <><i className="fas fa-link"></i> Share Link</>}
-                            </button>
-                            <button 
-                                onClick={handleAIExplain}
-                                disabled={isExplaining || fields.length === 0}
-                                className="bg-white border border-gray-200 text-indigo-600 hover:bg-indigo-50 text-sm font-medium py-2 px-4 rounded-lg shadow-sm disabled:opacity-50 transition-colors flex items-center gap-2"
-                            >
-                                {isExplaining ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-comment-dots"></i>}
-                                Explain Graph
                             </button>
                             <button 
                                 onClick={handleExportPNG}
@@ -809,23 +767,6 @@
                                 <i className="fas fa-expand-arrows-alt"></i>
                             </button>
                         </div>
-
-                        {/* Explanation Modal/Overlay */}
-                        {explanation && (
-                            <div className="absolute bottom-4 left-4 right-4 bg-white/95 backdrop-blur border border-indigo-100 rounded-xl p-5 shadow-xl z-20 max-w-3xl mx-auto">
-                                <div className="flex justify-between items-start mb-2">
-                                    <h3 className="font-semibold text-indigo-900 flex items-center gap-2">
-                                        <i className="fas fa-robot text-indigo-500"></i> AI Explanation
-                                    </h3>
-                                    <button onClick={() => setExplanation('')} className="text-gray-400 hover:text-gray-700">
-                                        <i className="fas fa-times"></i>
-                                    </button>
-                                </div>
-                                <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
-                                    {explanation}
-                                </div>
-                            </div>
-                        )}
 
                         {/* Graph Canvas Container */}
                         <div ref={containerRef} className="flex-1 w-full h-full cursor-grab active:cursor-grabbing"></div>
