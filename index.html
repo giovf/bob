@@ -100,15 +100,71 @@ react-dom/cjs/react-dom-client.production.js:
     <!-- App logic: JSX precompiled to plain JS (no Babel / no eval required) -->
     <script>
 const { useState, useEffect, useRef, useCallback } = React;
-const EXPORT_BG = "#f8fafc";
-const EDGE_STYLE = {
-  smooth: { type: "cubicBezier", forceDirection: "vertical", roundness: 0.4 },
-  color: { color: "rgba(148, 163, 184, 0.5)", highlight: "rgba(99, 102, 241, 0.8)", hover: "rgba(148, 163, 184, 0.7)" },
-  width: 2,
-  hoverWidth: 1,
-  selectionWidth: 1,
-  shadow: { enabled: true, color: "rgba(0,0,0,0.08)", size: 4, x: 0, y: 2 }
+const DEFAULT_THEME = {
+  bgColor: "#f8fafc",
+  bgImage: null,
+  // data URL of an uploaded background image, or null
+  bgFit: "cover",
+  // 'cover' | 'contain' | 'repeat'
+  fieldBg: "#ffffff",
+  fieldBorder: "#e2e8f0",
+  fieldText: "#1e293b",
+  opBg: "#f1f5f9",
+  opBorder: "#cbd5e1",
+  opText: "#475569",
+  edgeColor: "#94a3b8",
+  edgeWidth: 2,
+  fontSize: 14,
+  borderWidth: 1,
+  shadows: true
 };
+function hexToRgba(hex, a) {
+  if (typeof hex !== "string") return hex;
+  let h = hex.replace("#", "");
+  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+  const n = parseInt(h, 16);
+  if (isNaN(n)) return hex;
+  return `rgba(${n >> 16 & 255}, ${n >> 8 & 255}, ${n & 255}, ${a})`;
+}
+function makeEdgeStyle(theme) {
+  return {
+    smooth: { type: "cubicBezier", forceDirection: "vertical", roundness: 0.4 },
+    color: {
+      color: hexToRgba(theme.edgeColor, 0.75),
+      highlight: "rgba(99, 102, 241, 0.9)",
+      hover: hexToRgba(theme.edgeColor, 0.9)
+    },
+    width: theme.edgeWidth,
+    hoverWidth: 1,
+    selectionWidth: 1,
+    shadow: theme.shadows ? { enabled: true, color: "rgba(0,0,0,0.08)", size: 4, x: 0, y: 2 } : { enabled: false }
+  };
+}
+function ColorField({ label, value, onChange }) {
+  return /* @__PURE__ */ React.createElement("label", { className: "flex items-center justify-between text-sm text-gray-700" }, /* @__PURE__ */ React.createElement("span", null, label), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "color",
+      value,
+      onChange: (e) => onChange(e.target.value),
+      className: "w-7 h-7 rounded-md cursor-pointer border border-gray-300 bg-white p-0"
+    }
+  ));
+}
+function RangeField({ label, value, min, max, step, suffix, onChange }) {
+  return /* @__PURE__ */ React.createElement("div", { className: "space-y-1" }, /* @__PURE__ */ React.createElement("div", { className: "flex justify-between text-xs font-medium text-gray-500" }, /* @__PURE__ */ React.createElement("span", null, label), /* @__PURE__ */ React.createElement("span", { className: "text-indigo-600" }, value, suffix || "")), /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "range",
+      min,
+      max,
+      step: step || 1,
+      value,
+      onChange: (e) => onChange(Number(e.target.value)),
+      className: "w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+    }
+  ));
+}
 function showImageSaveOverlay(url, isBlob) {
   const overlay = document.createElement("div");
   overlay.style.cssText = "position:fixed;inset:0;z-index:2147483647;background:rgba(15,23,42,0.6);display:flex;align-items:center;justify-content:center;padding:24px;font-family:Inter,sans-serif;";
@@ -158,6 +214,47 @@ function showImageSaveOverlay(url, isBlob) {
   overlay.appendChild(card);
   document.body.appendChild(overlay);
 }
+const DEFAULT_BOUNDS = { enabled: false, x: -600, y: -400, width: 1200, height: 800 };
+function boundsHandlePoints(b) {
+  const l = b.x, r = b.x + b.width, t = b.y, bm = b.y + b.height, mx = (l + r) / 2, my = (t + bm) / 2;
+  return {
+    nw: { x: l, y: t },
+    n: { x: mx, y: t },
+    ne: { x: r, y: t },
+    w: { x: l, y: my },
+    e: { x: r, y: my },
+    sw: { x: l, y: bm },
+    s: { x: mx, y: bm },
+    se: { x: r, y: bm }
+  };
+}
+function hitTestBoundsHandle(b, gx, gy, tol) {
+  const pts = boundsHandlePoints(b);
+  for (const k of Object.keys(pts)) {
+    if (Math.abs(gx - pts[k].x) <= tol && Math.abs(gy - pts[k].y) <= tol) return k;
+  }
+  return null;
+}
+function resizeBoundsByHandle(start, handle, gx, gy, min) {
+  let l = start.x, r = start.x + start.width, t = start.y, bm = start.y + start.height;
+  if (handle.indexOf("w") !== -1) l = Math.min(gx, r - min);
+  if (handle.indexOf("e") !== -1) r = Math.max(gx, l + min);
+  if (handle.indexOf("n") !== -1) t = Math.min(gy, bm - min);
+  if (handle.indexOf("s") !== -1) bm = Math.max(gy, t + min);
+  return { x: l, y: t, width: r - l, height: bm - t };
+}
+function clampNodeCenter(net, id, b) {
+  const bb = net.getBoundingBox(id);
+  const pos = net.getPositions([id])[id];
+  if (!bb || !pos) return null;
+  const halfW = (bb.right - bb.left) / 2;
+  const halfH = (bb.bottom - bb.top) / 2;
+  const minX = b.x + halfW, maxX = b.x + b.width - halfW;
+  const minY = b.y + halfH, maxY = b.y + b.height - halfH;
+  const nx = minX <= maxX ? Math.min(Math.max(pos.x, minX), maxX) : b.x + b.width / 2;
+  const ny = minY <= maxY ? Math.min(Math.max(pos.y, minY), maxY) : b.y + b.height / 2;
+  return { x: nx, y: ny };
+}
 function App() {
   const loadInitialState = () => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -166,7 +263,7 @@ function App() {
       try {
         const decoded = JSON.parse(LZString.decompressFromEncodedURIComponent(sharedData));
         window.history.replaceState(null, "", window.location.pathname);
-        return { fields: decoded.fields || [], relationships: decoded.relationships || [] };
+        return { fields: decoded.fields || [], relationships: decoded.relationships || [], theme: decoded.theme, bounds: decoded.bounds };
       } catch (e) {
         console.error("Failed to parse shared link data.");
       }
@@ -177,9 +274,19 @@ function App() {
   const initialState = loadInitialState();
   const [fields, setFields] = useState(initialState.fields);
   const [relationships, setRelationships] = useState(initialState.relationships);
+  const [theme, setTheme] = useState({ ...DEFAULT_THEME, ...initialState.theme || {} });
+  const updateTheme = (patch) => setTheme((prev) => ({ ...prev, ...patch }));
+  const [bounds, setBounds] = useState({ ...DEFAULT_BOUNDS, ...initialState.bounds || {} });
   useEffect(() => {
-    localStorage.setItem("dag_builder_data", JSON.stringify({ fields, relationships }));
-  }, [fields, relationships]);
+    try {
+      localStorage.setItem("dag_builder_data", JSON.stringify({ fields, relationships, theme, bounds }));
+    } catch (e) {
+      try {
+        localStorage.setItem("dag_builder_data", JSON.stringify({ fields, relationships, theme: { ...theme, bgImage: null }, bounds }));
+      } catch (e2) {
+      }
+    }
+  }, [fields, relationships, theme, bounds]);
   const [newFieldName, setNewFieldName] = useState("");
   const [comboInputs, setComboInputs] = useState(["", ""]);
   const [comboOutput, setComboOutput] = useState("");
@@ -191,11 +298,109 @@ function App() {
   const [physicsEnabled, setPhysicsEnabled] = useState(false);
   const [bondStrength, setBondStrength] = useState(50);
   const [nodesPinned, setNodesPinned] = useState(false);
+  const [showAppearance, setShowAppearance] = useState(false);
   const networkRef = useRef(null);
   const containerRef = useRef(null);
   const fileInputRef = useRef(null);
+  const bgFileInputRef = useRef(null);
+  const bgImageElRef = useRef(null);
+  const boundsRef = useRef(bounds);
   const nodesDs = useRef(new vis.DataSet());
   const edgesDs = useRef(new vis.DataSet());
+  const applyBounds = (next) => {
+    boundsRef.current = next;
+    setBounds(next);
+  };
+  const updateBounds = (patch) => applyBounds({ ...boundsRef.current, ...patch });
+  const clampAllNodesToBounds = (b) => {
+    const net = networkRef.current;
+    if (!net || !b || !b.enabled) return;
+    const ids = nodesDs.current.getIds();
+    const updates = {};
+    ids.forEach((id) => {
+      const c = clampNodeCenter(net, id, b);
+      const pos = net.getPositions([id])[id];
+      if (c && pos && (c.x !== pos.x || c.y !== pos.y)) updates[id] = c;
+    });
+    const ks = Object.keys(updates);
+    if (ks.length) {
+      ks.forEach((id) => net.moveNode(id, updates[id].x, updates[id].y));
+      setFields((prev) => prev.map((f) => updates[f.id] ? { ...f, x: updates[f.id].x, y: updates[f.id].y } : f));
+    }
+  };
+  const computeFitBounds = (pad = 120) => {
+    const net = networkRef.current;
+    const ids = net ? nodesDs.current.getIds() : [];
+    const fallback = () => {
+      const c = net ? net.getViewPosition() : { x: 0, y: 0 };
+      return { x: c.x - 400, y: c.y - 300, width: 800, height: 600 };
+    };
+    if (!net || ids.length === 0) return fallback();
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    ids.forEach((id) => {
+      const bb = net.getBoundingBox(id);
+      if (!bb) return;
+      minX = Math.min(minX, bb.left);
+      minY = Math.min(minY, bb.top);
+      maxX = Math.max(maxX, bb.right);
+      maxY = Math.max(maxY, bb.bottom);
+    });
+    if (!isFinite(minX)) return fallback();
+    return { x: minX - pad, y: minY - pad, width: maxX - minX + 2 * pad, height: maxY - minY + 2 * pad };
+  };
+  const nodesFitWithin = (b) => {
+    const net = networkRef.current;
+    if (!net) return true;
+    return nodesDs.current.getIds().every((id) => {
+      const bb = net.getBoundingBox(id);
+      if (!bb) return true;
+      return bb.left >= b.x && bb.top >= b.y && bb.right <= b.x + b.width && bb.bottom <= b.y + b.height;
+    });
+  };
+  const handleToggleConfine = (on) => {
+    if (on) {
+      let next = { ...boundsRef.current, enabled: true };
+      if (!nodesFitWithin(next)) next = { ...computeFitBounds(), enabled: true };
+      applyBounds(next);
+    } else {
+      applyBounds({ ...boundsRef.current, enabled: false });
+    }
+  };
+  const handleFitBounds = () => applyBounds({ ...computeFitBounds(), enabled: true });
+  const handleRecenterBounds = () => {
+    const net = networkRef.current;
+    const b = boundsRef.current;
+    let cx, cy;
+    const ids = net ? nodesDs.current.getIds() : [];
+    if (net && ids.length) {
+      let sx = 0, sy = 0, n = 0;
+      ids.forEach((id) => {
+        const p = net.getPositions([id])[id];
+        if (p) {
+          sx += p.x;
+          sy += p.y;
+          n++;
+        }
+      });
+      const v = net.getViewPosition();
+      cx = n ? sx / n : v.x;
+      cy = n ? sy / n : v.y;
+    } else {
+      const v = net ? net.getViewPosition() : { x: 0, y: 0 };
+      cx = v.x;
+      cy = v.y;
+    }
+    const next = { ...b, x: cx - b.width / 2, y: cy - b.height / 2 };
+    applyBounds(next);
+    clampAllNodesToBounds(next);
+  };
+  const setBoundsSize = (w, h) => {
+    const b = boundsRef.current;
+    const cx = b.x + b.width / 2, cy = b.y + b.height / 2;
+    const next = { ...b, x: cx - w / 2, y: cy - h / 2, width: w, height: h };
+    applyBounds(next);
+    clampAllNodesToBounds(next);
+  };
   const handleAutoArrange = useCallback(() => {
     if (!networkRef.current) return;
     setPhysicsEnabled(false);
@@ -223,23 +428,91 @@ function App() {
       const options = {
         layout: { hierarchical: false },
         // Manual freeform positioning by default
-        edges: EDGE_STYLE,
+        edges: makeEdgeStyle(theme),
         physics: { enabled: false },
         // Controlled dynamically by React state
         interaction: { hover: true, tooltipDelay: 200, zoomView: true, dragNodes: true }
       };
       networkRef.current = new vis.Network(containerRef.current, data, options);
       networkRef.current.on("dragEnd", (params) => {
-        if (params.nodes.length > 0) {
-          const positions = networkRef.current.getPositions(params.nodes);
-          setFields((prevFields) => prevFields.map((f) => {
-            if (positions[f.id]) {
-              return { ...f, x: positions[f.id].x, y: positions[f.id].y };
+        if (params.nodes.length === 0) return;
+        const net = networkRef.current;
+        const b = boundsRef.current;
+        const positions = net.getPositions(params.nodes);
+        const finalPos = {};
+        params.nodes.forEach((id) => {
+          let p = positions[id];
+          if (!p) return;
+          if (b && b.enabled) {
+            const c = clampNodeCenter(net, id, b);
+            if (c) {
+              p = c;
+              net.moveNode(id, c.x, c.y);
             }
-            return f;
-          }));
-        }
+          }
+          finalPos[id] = p;
+        });
+        setFields((prevFields) => prevFields.map((f) => finalPos[f.id] ? { ...f, x: finalPos[f.id].x, y: finalPos[f.id].y } : f));
       });
+      networkRef.current.on("beforeDrawing", (ctx) => {
+        const net = networkRef.current, b = boundsRef.current;
+        if (!net || !b || !b.enabled) return;
+        const scale = net.getScale() || 1;
+        ctx.save();
+        ctx.fillStyle = "rgba(99,102,241,0.05)";
+        ctx.fillRect(b.x, b.y, b.width, b.height);
+        ctx.lineWidth = 1.5 / scale;
+        ctx.setLineDash([8 / scale, 6 / scale]);
+        ctx.strokeStyle = "rgba(99,102,241,0.65)";
+        ctx.strokeRect(b.x, b.y, b.width, b.height);
+        ctx.restore();
+      });
+      networkRef.current.on("afterDrawing", (ctx) => {
+        const net = networkRef.current, b = boundsRef.current;
+        if (!net || !b || !b.enabled) return;
+        const scale = net.getScale() || 1;
+        const s = 8 / scale;
+        const pts = boundsHandlePoints(b);
+        ctx.save();
+        ctx.fillStyle = "#ffffff";
+        ctx.strokeStyle = "#6366f1";
+        ctx.lineWidth = 1.5 / scale;
+        Object.keys(pts).forEach((k) => {
+          ctx.beginPath();
+          ctx.rect(pts[k].x - s, pts[k].y - s, s * 2, s * 2);
+          ctx.fill();
+          ctx.stroke();
+        });
+        ctx.restore();
+      });
+      containerRef.current.addEventListener("pointerdown", (e) => {
+        const net = networkRef.current, b = boundsRef.current;
+        if (!net || !b || !b.enabled || !containerRef.current) return;
+        const rect = containerRef.current.getBoundingClientRect();
+        const g = net.DOMtoCanvas({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+        const handle = hitTestBoundsHandle(b, g.x, g.y, 12 / (net.getScale() || 1));
+        if (!handle) return;
+        e.preventDefault();
+        e.stopPropagation();
+        net.setOptions({ interaction: { dragView: false, dragNodes: false } });
+        const startBounds = { ...b };
+        const onMove = (ev) => {
+          const r2 = containerRef.current.getBoundingClientRect();
+          const gg = net.DOMtoCanvas({ x: ev.clientX - r2.left, y: ev.clientY - r2.top });
+          const next = resizeBoundsByHandle(startBounds, handle, gg.x, gg.y, 200);
+          boundsRef.current = next;
+          setBounds(next);
+          net.redraw();
+        };
+        const onUp = () => {
+          document.removeEventListener("pointermove", onMove, true);
+          document.removeEventListener("pointerup", onUp, true);
+          net.setOptions({ interaction: { dragView: true, dragNodes: true } });
+          clampAllNodesToBounds(boundsRef.current);
+        };
+        document.addEventListener("pointermove", onMove, true);
+        document.addEventListener("pointerup", onUp, true);
+      }, true);
       const needsLayout = fields.length > 0 && fields.every((f) => f.x === void 0);
       if (needsLayout) handleAutoArrange();
     }
@@ -299,25 +572,26 @@ function App() {
         nodeProps.shape = "circle";
         nodeProps.margin = 8;
         nodeProps.color = {
-          background: "#f1f5f9",
-          border: "#cbd5e1",
-          highlight: { background: "#e2e8f0", border: "#94a3b8" }
+          background: theme.opBg,
+          border: theme.opBorder,
+          highlight: { background: theme.opBg, border: "#6366f1" },
+          hover: { background: theme.opBg, border: theme.opBorder }
         };
-        nodeProps.font = { size: 16, color: "#475569", face: '"JetBrains Mono", monospace', bold: true };
-        nodeProps.borderWidth = 1;
-        nodeProps.shadow = { enabled: true, color: "rgba(0,0,0,0.05)", size: 8, x: 0, y: 3 };
+        nodeProps.font = { size: theme.fontSize + 2, color: theme.opText, face: '"JetBrains Mono", monospace', bold: true };
+        nodeProps.borderWidth = theme.borderWidth;
+        nodeProps.shadow = theme.shadows ? { enabled: true, color: "rgba(0,0,0,0.05)", size: 8, x: 0, y: 3 } : { enabled: false };
       } else {
         nodeProps.shape = "box";
         nodeProps.margin = { top: 12, bottom: 12, left: 16, right: 16 };
         nodeProps.color = {
-          background: "#ffffff",
-          border: "#e2e8f0",
-          highlight: { background: "#f8fafc", border: "#94a3b8" },
-          hover: { background: "#f8fafc", border: "#cbd5e1" }
+          background: theme.fieldBg,
+          border: theme.fieldBorder,
+          highlight: { background: theme.fieldBg, border: "#6366f1" },
+          hover: { background: theme.fieldBg, border: theme.fieldBorder }
         };
-        nodeProps.font = { size: 14, color: "#1e293b", face: '"Inter", sans-serif' };
-        nodeProps.borderWidth = 1;
-        nodeProps.shadow = { enabled: true, color: "rgba(0,0,0,0.04)", size: 12, x: 0, y: 4 };
+        nodeProps.font = { size: theme.fontSize, color: theme.fieldText, face: '"Inter", sans-serif' };
+        nodeProps.borderWidth = theme.borderWidth;
+        nodeProps.shadow = theme.shadows ? { enabled: true, color: "rgba(0,0,0,0.04)", size: 12, x: 0, y: 4 } : { enabled: false };
       }
       return nodeProps;
     });
@@ -333,7 +607,38 @@ function App() {
     const edgesToRemove = currentEdges.filter((e) => !newEdgeIds.includes(e.id)).map((e) => e.id);
     if (edgesToRemove.length > 0) edgesDs.current.remove(edgesToRemove);
     edgesDs.current.update(mappedEdges);
-  }, [fields, relationships, nodesPinned]);
+  }, [fields, relationships, nodesPinned, theme]);
+  useEffect(() => {
+    if (networkRef.current) networkRef.current.setOptions({ edges: makeEdgeStyle(theme) });
+  }, [theme]);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    el.style.backgroundColor = theme.bgColor;
+    if (theme.bgImage) {
+      el.style.backgroundImage = `url("${theme.bgImage}")`;
+      el.style.backgroundPosition = "center";
+      if (theme.bgFit === "repeat") {
+        el.style.backgroundRepeat = "repeat";
+        el.style.backgroundSize = "auto";
+      } else {
+        el.style.backgroundRepeat = "no-repeat";
+        el.style.backgroundSize = theme.bgFit;
+      }
+      const img = new Image();
+      img.onload = () => {
+        bgImageElRef.current = img;
+      };
+      img.src = theme.bgImage;
+    } else {
+      el.style.backgroundImage = "none";
+      bgImageElRef.current = null;
+    }
+  }, [theme.bgImage, theme.bgFit, theme.bgColor]);
+  useEffect(() => {
+    boundsRef.current = bounds;
+    if (networkRef.current) networkRef.current.redraw();
+  }, [bounds]);
   const detectCycle = (edges, newSource, newTarget) => {
     const adjList = {};
     edges.forEach((e) => {
@@ -366,7 +671,14 @@ function App() {
     const center = networkRef.current.getViewPosition();
     const jitterX = Math.floor(Math.random() * 60) - 30;
     const jitterY = Math.floor(Math.random() * 60) - 30;
-    return { x: center.x + jitterX, y: center.y + jitterY };
+    let x = center.x + jitterX, y = center.y + jitterY;
+    const b = boundsRef.current;
+    if (b && b.enabled) {
+      const inset = 60;
+      x = Math.min(Math.max(x, b.x + inset), b.x + b.width - inset);
+      y = Math.min(Math.max(y, b.y + inset), b.y + b.height - inset);
+    }
+    return { x, y };
   };
   const addBaseField = (e) => {
     e.preventDefault();
@@ -484,7 +796,7 @@ function App() {
     setRelationships(remainingRels);
   };
   const handleExportJSON = () => {
-    const dataStr = JSON.stringify({ fields, relationships }, null, 2);
+    const dataStr = JSON.stringify({ fields, relationships, theme, bounds }, null, 2);
     const blob = new Blob([dataStr], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -503,6 +815,8 @@ function App() {
         if (data.fields && data.relationships) {
           setFields(data.fields);
           setRelationships(data.relationships);
+          if (data.theme) setTheme({ ...DEFAULT_THEME, ...data.theme });
+          if (data.bounds) applyBounds({ ...DEFAULT_BOUNDS, ...data.bounds });
           setError(null);
         } else {
           setError("Invalid file format. Ensure it's a previously exported graph file.");
@@ -527,8 +841,22 @@ function App() {
       out.width = sourceCanvas.width;
       out.height = sourceCanvas.height;
       const ctx = out.getContext("2d");
-      ctx.fillStyle = EXPORT_BG;
+      ctx.fillStyle = theme.bgColor;
       ctx.fillRect(0, 0, out.width, out.height);
+      const bg = bgImageElRef.current;
+      if (bg && bg.width && bg.height) {
+        if (theme.bgFit === "repeat") {
+          const pat = ctx.createPattern(bg, "repeat");
+          if (pat) {
+            ctx.fillStyle = pat;
+            ctx.fillRect(0, 0, out.width, out.height);
+          }
+        } else {
+          const s = theme.bgFit === "contain" ? Math.min(out.width / bg.width, out.height / bg.height) : Math.max(out.width / bg.width, out.height / bg.height);
+          const dw = bg.width * s, dh = bg.height * s;
+          ctx.drawImage(bg, (out.width - dw) / 2, (out.height - dh) / 2, dw, dh);
+        }
+      }
       ctx.drawImage(sourceCanvas, 0, 0);
       const fileName = `logic_graph_${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}.png`;
       let sandboxed = false;
@@ -590,7 +918,7 @@ function App() {
         layout: { hierarchical: false },
         physics: { enabled: false },
         interaction: { hover: false, dragNodes: false, zoomView: false, selectable: false },
-        edges: EDGE_STYLE
+        edges: makeEdgeStyle(theme)
       });
       exportNet.fit();
       exportNet.moveTo({
@@ -622,7 +950,8 @@ function App() {
     setError(null);
   };
   const handleShareLink = () => {
-    const dataStr = JSON.stringify({ fields, relationships });
+    const shareTheme = { ...theme, bgImage: null };
+    const dataStr = JSON.stringify({ fields, relationships, theme: shareTheme, bounds });
     const compressed = LZString.compressToEncodedURIComponent(dataStr);
     const shareUrl = `${window.location.origin}${window.location.pathname}?g=${compressed}`;
     try {
@@ -641,6 +970,37 @@ function App() {
       setTimeout(() => setShareCopied(false), 2e3);
     }
   };
+  const handleBgUpload = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const src = ev.target.result;
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 2048;
+        let w = img.width, h = img.height;
+        if (w > MAX || h > MAX) {
+          const s = Math.min(MAX / w, MAX / h);
+          w = Math.round(w * s);
+          h = Math.round(h * s);
+          const c = document.createElement("canvas");
+          c.width = w;
+          c.height = h;
+          c.getContext("2d").drawImage(img, 0, 0, w, h);
+          updateTheme({ bgImage: c.toDataURL("image/png") });
+        } else {
+          updateTheme({ bgImage: src });
+        }
+      };
+      img.onerror = () => updateTheme({ bgImage: src });
+      img.src = src;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = null;
+  };
+  const handleRemoveBg = () => updateTheme({ bgImage: null });
+  const handleResetTheme = () => setTheme(DEFAULT_THEME);
   const availableBaseFields = fields.filter((f) => f.type !== "operation");
   const operations = fields.filter((f) => f.type === "operation");
   const directLinks = relationships.filter((r) => {
@@ -791,7 +1151,7 @@ function App() {
       title: "Center Graph"
     },
     /* @__PURE__ */ React.createElement("i", { className: "fas fa-expand-arrows-alt" })
-  )), /* @__PURE__ */ React.createElement("div", { className: "absolute top-4 left-4 z-10 bg-white/95 backdrop-blur border border-gray-200 p-4 rounded-xl shadow-sm w-64 space-y-4" }, /* @__PURE__ */ React.createElement("h3", { className: "text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-2" }, /* @__PURE__ */ React.createElement("i", { className: "fas fa-sliders-h text-indigo-500" }), " Canvas Settings"), /* @__PURE__ */ React.createElement("label", { className: "flex items-center justify-between text-sm text-gray-700 cursor-pointer group", title: "Anchor nodes against physics, but allow manual dragging" }, /* @__PURE__ */ React.createElement("span", { className: "group-hover:text-indigo-600 transition-colors" }, /* @__PURE__ */ React.createElement("i", { className: "fas fa-thumbtack w-4 text-center mr-1 text-gray-400" }), " Anchor Nodes"), /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: nodesPinned, onChange: handleToggleAnchor, className: "w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer" })), /* @__PURE__ */ React.createElement("label", { className: "flex items-center justify-between text-sm text-gray-700 cursor-pointer group" }, /* @__PURE__ */ React.createElement("span", { className: "group-hover:text-indigo-600 transition-colors" }, /* @__PURE__ */ React.createElement("i", { className: "fas fa-magnet w-4 text-center mr-1 text-gray-400" }), " Elastic Physics"), /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: physicsEnabled, onChange: handleTogglePhysics, className: "w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer" })), physicsEnabled && /* @__PURE__ */ React.createElement("div", { className: "space-y-2 pt-2 border-t border-gray-100" }, /* @__PURE__ */ React.createElement("div", { className: "flex justify-between text-xs font-medium text-gray-500" }, /* @__PURE__ */ React.createElement("span", null, "Loose"), /* @__PURE__ */ React.createElement("span", { className: "text-indigo-600" }, "Bond Strength"), /* @__PURE__ */ React.createElement("span", null, "Tight")), /* @__PURE__ */ React.createElement(
+  )), /* @__PURE__ */ React.createElement("div", { className: "absolute top-4 left-4 z-10 bg-white/95 backdrop-blur border border-gray-200 p-4 rounded-xl shadow-sm w-64 space-y-4 max-h-[calc(100vh-2rem)] overflow-y-auto" }, /* @__PURE__ */ React.createElement("h3", { className: "text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-2" }, /* @__PURE__ */ React.createElement("i", { className: "fas fa-sliders-h text-indigo-500" }), " Canvas Settings"), /* @__PURE__ */ React.createElement("label", { className: "flex items-center justify-between text-sm text-gray-700 cursor-pointer group", title: "Anchor nodes against physics, but allow manual dragging" }, /* @__PURE__ */ React.createElement("span", { className: "group-hover:text-indigo-600 transition-colors" }, /* @__PURE__ */ React.createElement("i", { className: "fas fa-thumbtack w-4 text-center mr-1 text-gray-400" }), " Anchor Nodes"), /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: nodesPinned, onChange: handleToggleAnchor, className: "w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer" })), /* @__PURE__ */ React.createElement("label", { className: "flex items-center justify-between text-sm text-gray-700 cursor-pointer group" }, /* @__PURE__ */ React.createElement("span", { className: "group-hover:text-indigo-600 transition-colors" }, /* @__PURE__ */ React.createElement("i", { className: "fas fa-magnet w-4 text-center mr-1 text-gray-400" }), " Elastic Physics"), /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: physicsEnabled, onChange: handleTogglePhysics, className: "w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer" })), physicsEnabled && /* @__PURE__ */ React.createElement("div", { className: "space-y-2 pt-2 border-t border-gray-100" }, /* @__PURE__ */ React.createElement("div", { className: "flex justify-between text-xs font-medium text-gray-500" }, /* @__PURE__ */ React.createElement("span", null, "Loose"), /* @__PURE__ */ React.createElement("span", { className: "text-indigo-600" }, "Bond Strength"), /* @__PURE__ */ React.createElement("span", null, "Tight")), /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "range",
@@ -801,7 +1161,49 @@ function App() {
       onChange: (e) => setBondStrength(Number(e.target.value)),
       className: "w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
     }
-  ))), /* @__PURE__ */ React.createElement("div", { ref: containerRef, className: "flex-1 w-full h-full cursor-grab active:cursor-grabbing" }), fields.length === 0 && /* @__PURE__ */ React.createElement("div", { className: "absolute inset-0 flex items-center justify-center pointer-events-none" }, /* @__PURE__ */ React.createElement("div", { className: "text-center text-gray-400" }, /* @__PURE__ */ React.createElement("i", { className: "fas fa-project-diagram text-5xl mb-4 opacity-50" }), /* @__PURE__ */ React.createElement("p", { className: "text-lg" }, "Add nodes and combine them to start building your logic graph.")))));
+  )), /* @__PURE__ */ React.createElement("div", { className: "pt-3 border-t border-gray-200 space-y-3" }, /* @__PURE__ */ React.createElement("label", { className: "flex items-center justify-between text-sm text-gray-700 cursor-pointer group", title: "Keep nodes inside an adjustable area" }, /* @__PURE__ */ React.createElement("span", { className: "group-hover:text-indigo-600 transition-colors" }, /* @__PURE__ */ React.createElement("i", { className: "fas fa-vector-square w-4 text-center mr-1 text-gray-400" }), " Confine Nodes"), /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: bounds.enabled, onChange: (e) => handleToggleConfine(e.target.checked), className: "w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer" })), bounds.enabled && /* @__PURE__ */ React.createElement("div", { className: "space-y-3 pl-1" }, /* @__PURE__ */ React.createElement(RangeField, { label: "Width", value: Math.round(bounds.width), min: 200, max: 8e3, step: 10, onChange: (w) => setBoundsSize(w, bounds.height) }), /* @__PURE__ */ React.createElement(RangeField, { label: "Height", value: Math.round(bounds.height), min: 200, max: 8e3, step: 10, onChange: (h) => setBoundsSize(bounds.width, h) }), /* @__PURE__ */ React.createElement("div", { className: "flex gap-2" }, /* @__PURE__ */ React.createElement("button", { onClick: handleFitBounds, title: "Resize the area to fit all nodes", className: "flex-1 bg-white border border-gray-300 text-gray-700 text-xs font-medium py-1.5 px-2 rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center gap-1" }, /* @__PURE__ */ React.createElement("i", { className: "fas fa-compress" }), " Fit"), /* @__PURE__ */ React.createElement("button", { onClick: handleRecenterBounds, title: "Center the area on the graph", className: "flex-1 bg-white border border-gray-300 text-gray-700 text-xs font-medium py-1.5 px-2 rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center gap-1" }, /* @__PURE__ */ React.createElement("i", { className: "fas fa-crosshairs" }), " Center")), /* @__PURE__ */ React.createElement("p", { className: "text-[11px] text-gray-400 leading-snug" }, "Drag the square handles on the frame to resize it, or use the sliders. Nodes snap inside when released."))), /* @__PURE__ */ React.createElement("div", { className: "pt-3 border-t border-gray-200" }, /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => setShowAppearance((v) => !v),
+      className: "w-full flex items-center justify-between text-xs font-bold text-gray-800 uppercase tracking-wider"
+    },
+    /* @__PURE__ */ React.createElement("span", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement("i", { className: "fas fa-palette text-indigo-500" }), " Appearance"),
+    /* @__PURE__ */ React.createElement("i", { className: `fas fa-chevron-${showAppearance ? "up" : "down"} text-gray-400` })
+  ), showAppearance && /* @__PURE__ */ React.createElement("div", { className: "mt-3 space-y-4" }, /* @__PURE__ */ React.createElement("div", { className: "space-y-2" }, /* @__PURE__ */ React.createElement("div", { className: "text-[11px] font-semibold text-gray-400 uppercase tracking-wide" }, "Background"), /* @__PURE__ */ React.createElement(ColorField, { label: "Color", value: theme.bgColor, onChange: (v) => updateTheme({ bgColor: v }) }), /* @__PURE__ */ React.createElement("input", { type: "file", accept: "image/*", ref: bgFileInputRef, onChange: handleBgUpload, className: "hidden" }), /* @__PURE__ */ React.createElement("div", { className: "flex gap-2" }, /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: () => bgFileInputRef.current && bgFileInputRef.current.click(),
+      className: "flex-1 bg-white border border-gray-300 text-gray-700 text-xs font-medium py-1.5 px-2 rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center gap-1"
+    },
+    /* @__PURE__ */ React.createElement("i", { className: "fas fa-image" }),
+    " ",
+    theme.bgImage ? "Replace" : "Upload",
+    " image"
+  ), theme.bgImage && /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: handleRemoveBg,
+      title: "Remove background image",
+      className: "bg-white border border-gray-300 text-red-600 text-xs py-1.5 px-2.5 rounded-lg hover:bg-red-50 transition-colors"
+    },
+    /* @__PURE__ */ React.createElement("i", { className: "fas fa-trash" })
+  )), theme.bgImage && /* @__PURE__ */ React.createElement("div", { className: "flex gap-1" }, ["cover", "contain", "repeat"].map((fit) => /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      key: fit,
+      onClick: () => updateTheme({ bgFit: fit }),
+      className: `flex-1 text-[11px] py-1 rounded-md border transition-colors ${theme.bgFit === fit ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`
+    },
+    fit === "repeat" ? "Tile" : fit.charAt(0).toUpperCase() + fit.slice(1)
+  )))), /* @__PURE__ */ React.createElement("div", { className: "space-y-2" }, /* @__PURE__ */ React.createElement("div", { className: "text-[11px] font-semibold text-gray-400 uppercase tracking-wide" }, "Field Nodes"), /* @__PURE__ */ React.createElement(ColorField, { label: "Fill", value: theme.fieldBg, onChange: (v) => updateTheme({ fieldBg: v }) }), /* @__PURE__ */ React.createElement(ColorField, { label: "Border", value: theme.fieldBorder, onChange: (v) => updateTheme({ fieldBorder: v }) }), /* @__PURE__ */ React.createElement(ColorField, { label: "Text", value: theme.fieldText, onChange: (v) => updateTheme({ fieldText: v }) })), /* @__PURE__ */ React.createElement("div", { className: "space-y-2" }, /* @__PURE__ */ React.createElement("div", { className: "text-[11px] font-semibold text-gray-400 uppercase tracking-wide" }, "Operation Nodes"), /* @__PURE__ */ React.createElement(ColorField, { label: "Fill", value: theme.opBg, onChange: (v) => updateTheme({ opBg: v }) }), /* @__PURE__ */ React.createElement(ColorField, { label: "Border", value: theme.opBorder, onChange: (v) => updateTheme({ opBorder: v }) }), /* @__PURE__ */ React.createElement(ColorField, { label: "Text", value: theme.opText, onChange: (v) => updateTheme({ opText: v }) })), /* @__PURE__ */ React.createElement("div", { className: "space-y-2" }, /* @__PURE__ */ React.createElement("div", { className: "text-[11px] font-semibold text-gray-400 uppercase tracking-wide" }, "Edges"), /* @__PURE__ */ React.createElement(ColorField, { label: "Color", value: theme.edgeColor, onChange: (v) => updateTheme({ edgeColor: v }) }), /* @__PURE__ */ React.createElement(RangeField, { label: "Thickness", value: theme.edgeWidth, min: 1, max: 8, suffix: "px", onChange: (v) => updateTheme({ edgeWidth: v }) })), /* @__PURE__ */ React.createElement("div", { className: "space-y-3" }, /* @__PURE__ */ React.createElement("div", { className: "text-[11px] font-semibold text-gray-400 uppercase tracking-wide" }, "Text & Borders"), /* @__PURE__ */ React.createElement(RangeField, { label: "Text size", value: theme.fontSize, min: 10, max: 28, suffix: "px", onChange: (v) => updateTheme({ fontSize: v }) }), /* @__PURE__ */ React.createElement(RangeField, { label: "Border width", value: theme.borderWidth, min: 0, max: 6, suffix: "px", onChange: (v) => updateTheme({ borderWidth: v }) }), /* @__PURE__ */ React.createElement("label", { className: "flex items-center justify-between text-sm text-gray-700 cursor-pointer" }, /* @__PURE__ */ React.createElement("span", null, "Shadows"), /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: theme.shadows, onChange: (e) => updateTheme({ shadows: e.target.checked }), className: "w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer" }))), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      onClick: handleResetTheme,
+      className: "w-full text-xs text-gray-500 hover:text-gray-800 border border-gray-200 rounded-lg py-1.5 hover:bg-gray-50 transition-colors flex items-center justify-center gap-1"
+    },
+    /* @__PURE__ */ React.createElement("i", { className: "fas fa-rotate-left" }),
+    " Reset to defaults"
+  )))), /* @__PURE__ */ React.createElement("div", { ref: containerRef, className: "flex-1 w-full h-full cursor-grab active:cursor-grabbing" }), fields.length === 0 && /* @__PURE__ */ React.createElement("div", { className: "absolute inset-0 flex items-center justify-center pointer-events-none" }, /* @__PURE__ */ React.createElement("div", { className: "text-center text-gray-400" }, /* @__PURE__ */ React.createElement("i", { className: "fas fa-project-diagram text-5xl mb-4 opacity-50" }), /* @__PURE__ */ React.createElement("p", { className: "text-lg" }, "Add nodes and combine them to start building your logic graph.")))));
 }
 function mountApp() {
   const root = ReactDOM.createRoot(document.getElementById("root"));
